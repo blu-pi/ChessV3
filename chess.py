@@ -34,10 +34,10 @@ class Pos: #cba to find import for co-ordinates
         return self.x >= 0 and self.x < 8 and self.y >= 0 and self.y < 8
 
     def toSqu(self):
-        return board_files[self.x, self.y + 1]
+        return Squ(board_files[self.x], self.y + 1)
 
     def __str__(self):
-        return "[ " + str(self.x) + "," + str(self.y) + " ]"
+        return "[" + str(self.x) + "," + str(self.y) + "]"
 
 
 #squ always refers to a square as people see it e.g. E4
@@ -47,6 +47,11 @@ class Squ:
     def __init__(self, file, rank):
         self.file = file
         self.rank = rank
+
+    def __eq__(self, other):
+        if (isinstance(other, Pos)):
+            return self.file == other.file and self.rank == other.rank
+        return False
 
     #checks if the square exists on the board
     def isValid(self):
@@ -69,12 +74,19 @@ class Squ:
 class Piece:
     total_pieces = 0
 
-    def __init__(self, x, y, colour, is_promoted, has_moved):
+    def __init__(self, x, y, colour, letter):
         self.pos = Pos(x, y)
         self.colour = colour
-        self.is_promoted = is_promoted #Needed for material balance calculation/ display
-        self.has_moved = has_moved
-        total_pieces += 1
+        self.letter = letter
+        Piece.total_pieces += 1
+
+    def __eq__(self, other):
+        if (isinstance(other, Pos)):
+            return self.letter == other.letter and self.colour == other.colour
+        return False
+
+    def __str__(self):
+        return self.colour + self.getLetter
 
     def move_pos(self, new_pos):
         self.pos = new_pos
@@ -83,15 +95,15 @@ class Piece:
 
 class Knight(Piece):
 
-    moveset = ["KNIGHT_MOVES"]
     letter = "N"
     value = 3
 
-    def __init__(self):
-        pass
+    def __init__(self, x, y, colour, is_promoted):
+        self.is_promoted = is_promoted
+        Piece.__init__(self, x, y, colour, Knight.letter)
 
     def __str__(self):
-        return self.colour, "Knight"
+        return self.colour + " Knight"
     
     #return co-ordinates of all squares this peace is allowed to move to. 
     #Start Tier 1 legality check (refer to "Legality Logic Explained")
@@ -114,68 +126,95 @@ class Knight(Piece):
                 delta_x *= -1           
         print(possible_new_pos + " DEBUG TEST")
         #proceed to Tier 3 legality checks    
+    
+    def getLetter(self):
+        return self.letter
 
 
 class Bishop(Piece):
 
-    moveset = ["BISHOP_MOVES"]
     letter = "B"
     value = 3
 
-    def __init__(self):
-        pass
+    def __init__(self, x, y, colour, is_promoted):
+        self.is_promoted = is_promoted
+        Piece.__init__(self, x, y, colour, Bishop.letter)
 
     def __str__(self):
-        return self.colour, "Bishop"
+        return self.colour + " Bishop"
 
 
 class Pawn(Piece):
 
-    moveset = ["PAWN_MOVES"]
     letter = "P"
     value = 1
 
-    def __init__(self):
-        pass
+    def __init__(self, x, y, colour, has_moved):
+        self.is_promoted = False #promoting to a pawn isn't allowed
+        self.has_moved = has_moved #only relevant in rules for pawn, king and rooks.
+        Piece.__init__(self, x, y, colour, Pawn.letter)
 
     def __str__(self):
-        return self.colour, "Pawn"
+        return self.colour + " Pawn"
 
 
 class Queen(Piece):
 
-    moveset = ["QUEEN_MOVES"]
     letter = "Q"
     value = 9
 
-    def __init__(self):
-        pass
+    def __init__(self, x, y, colour, is_promoted):
+        self.is_promoted = is_promoted
+        Piece.__init__(self, x, y, colour, Queen.letter)
 
     def __str__(self):
-        return self.colour, "Queen"
+        return self.colour + " Queen"
 
 
 class King(Piece):
 
-    moveset = ["KING_MOVES"]
     letter = "K"
     value = 100 #essentially infinite
 
-    def __init__(self):
-        pass
+    def __init__(self, x, y, colour, has_moved):
+        self.is_promoted = False #promoting to a king isn't allowed
+        self.has_moved = has_moved
+        Piece.__init__(self, x, y, colour, King.letter)
 
     def __str__(self):
-        return self.colour, "King"
+        return self.colour + " King"
 
 
 class Rook(Piece):
 
-    moveset = ["ROOK_MOVES"]
     letter = "R"
     value = 5
 
-    def __init__(self):
-        pass
+    def __init__(self, x, y, colour, is_promoted, has_moved):
+        self.is_promoted = is_promoted
+        self.has_moved = has_moved
+        Piece.__init__(self, x, y, colour, Rook.letter)
 
     def __str__(self):
-        return self.colour, "Rook"
+        return self.colour + " Rook"
+
+#CODE TESTS
+#Yes this is scuffed but good enough to get the job done. 
+
+knight = Knight(2,2,"White",False)
+knight2 = Knight(2,3,"White",False)
+bishop = Bishop(0,2, "Black",False)
+pawn = Pawn(6,0,"Black",False)
+queen = Queen(4,3,"White", True)
+king = King(7,4,"Black", False)
+rook = Rook(0,0,"White", False, False)
+print(knight)
+print(knight2)
+test1 = knight == knight2
+test2 = knight == rook
+test3 = knight.pos.isValid()
+print("False? " + str(test1))
+print("False? " + str(test2))
+print("Knight pos Valid (True) ? " + str(test3))
+print("knight pos: "+ str(knight.pos))
+print("Knight square: " + str(knight.pos.toSqu()))
