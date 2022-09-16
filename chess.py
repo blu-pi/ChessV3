@@ -1,4 +1,6 @@
+from pdb import line_prefix
 import pygame
+from pathlib import Path
 
 #Legality Logic Explained:
 #Tiers are for understanding what code does which action. Checks may move between tiers and are NOT perfectly sequential in execution!
@@ -12,6 +14,30 @@ import pygame
 #Any move created from Tier 1 and 2 that passes all checks can be considered to be a "Candidate Move" and is allowed to be played
 
 board_files = ["A","B","C","D","E","F","G","H"] #all files/collumnes on a chess board
+
+#COLOUR THEN PIECE LETTER. 00 represents empty square
+test_board = [
+    ["WR","WP",00,00,00,00,"BP","BR"],
+    ["WN","WP",00,00,00,00,"BP","BN"],
+    ["WB","WP",00,00,00,00,"BP","BB"],
+    ["WQ","WP",00,00,00,00,"BP","BQ"],
+    ["WK","WP",00,00,00,00,"BP","BK"],
+    ["WB","WP",00,00,00,00,"BP","BB"],
+    ["WN","WP",00,00,00,00,"BP","BN"],
+    ["WR","WP",00,00,00,00,"BP","BR"]
+    ]
+
+board = [
+    ["","","","","","","",""],
+    ["","","","","","","",""],
+    ["","","","","","","",""],
+    ["","","","","","","",""],
+    ["","","","","","","",""],
+    ["","","","","","","",""],
+    ["","","","","","","",""],
+    ["","","","","","","",""]
+    ]
+    
 
 #pos always refers a coordinate 
 class Pos: #cba to find import for co-ordinates
@@ -28,6 +54,9 @@ class Pos: #cba to find import for co-ordinates
     def __add__(self, other):
         return Pos(self.x + other.x, self.y + other.y)  
     #__radd__ not needed as only 2 Pos can be added. Pos + int or int + Pos is not supported!
+
+    def isFree(self, piece):
+        return getSquare(self)[0] != piece.colour
 
     #checks if the position is on the board
     def isValid(self):
@@ -78,6 +107,8 @@ class Piece:
         self.pos = Pos(x, y)
         self.colour = colour
         self.letter = letter
+        current = board[x][y]
+        board[x][y] = colour[0] + letter[0] + current #has_moved and is_promoted symbols are written before but need to come after
         Piece.total_pieces += 1
 
     def __eq__(self, other):
@@ -86,11 +117,16 @@ class Piece:
         return False
 
     def __str__(self):
-        return self.colour + self.getLetter
+        return self.colour + self.letter
 
     def move_pos(self, new_pos):
+        init_pos_entry = getSquare(self.pos)
+        setSquare(self.pos, "00")
         self.pos = new_pos
-        self.has_moved = True
+        if self.letter == "P" or self.letter == "K" or self.letter == "R":
+            self.has_moved = True
+            init_pos_entry.rstrip(init_pos_entry[-1])
+        setSquare(self.pos, init_pos_entry)
 
 
 class Knight(Piece):
@@ -100,6 +136,8 @@ class Knight(Piece):
 
     def __init__(self, x, y, colour, is_promoted):
         self.is_promoted = is_promoted
+        if is_promoted:
+            board[x][y] = "p"
         Piece.__init__(self, x, y, colour, Knight.letter)
 
     def __str__(self):
@@ -117,14 +155,14 @@ class Knight(Piece):
                 delta_y = 2
             move_vector = Pos(delta_x, delta_y)
             new_pos = self.pos + move_vector
-            if new_pos.isValid:
+            if new_pos.isValid() and new_pos.isFree(self): #TODO maybe not working properly
                 possible_new_pos.append(new_pos)
             #modify deltas for next loop
             if i % 2 == 0:
                 delta_y *= -1
             else:
                 delta_x *= -1           
-        print(possible_new_pos + " DEBUG TEST")
+        return possible_new_pos
         #proceed to Tier 3 legality checks    
     
     def getLetter(self):
@@ -138,6 +176,8 @@ class Bishop(Piece):
 
     def __init__(self, x, y, colour, is_promoted):
         self.is_promoted = is_promoted
+        if is_promoted:
+            board[x][y] = "p"
         Piece.__init__(self, x, y, colour, Bishop.letter)
 
     def __str__(self):
@@ -152,6 +192,8 @@ class Pawn(Piece):
     def __init__(self, x, y, colour, has_moved):
         self.is_promoted = False #promoting to a pawn isn't allowed
         self.has_moved = has_moved #only relevant in rules for pawn, king and rooks.
+        if has_moved:
+            board[x][y] = "m"
         Piece.__init__(self, x, y, colour, Pawn.letter)
 
     def __str__(self):
@@ -165,6 +207,8 @@ class Queen(Piece):
 
     def __init__(self, x, y, colour, is_promoted):
         self.is_promoted = is_promoted
+        if is_promoted:
+            board[x][y] = "p"
         Piece.__init__(self, x, y, colour, Queen.letter)
 
     def __str__(self):
@@ -179,6 +223,8 @@ class King(Piece):
     def __init__(self, x, y, colour, has_moved):
         self.is_promoted = False #promoting to a king isn't allowed
         self.has_moved = has_moved
+        if has_moved:
+            board[x][y] = "m"
         Piece.__init__(self, x, y, colour, King.letter)
 
     def __str__(self):
@@ -193,10 +239,96 @@ class Rook(Piece):
     def __init__(self, x, y, colour, is_promoted, has_moved):
         self.is_promoted = is_promoted
         self.has_moved = has_moved
+        if has_moved:
+            board[x][y] = "m"
+        elif is_promoted:
+            board[x][y] = "p"
         Piece.__init__(self, x, y, colour, Rook.letter)
 
     def __str__(self):
         return self.colour + " Rook"
+
+class Game:
+
+    def __init__(self, type, isNew):
+        self.type = type
+        self.isNew = isNew
+        if isNew:
+            if type == "Classic":
+                Game.loadGame("new_game.txt")
+            elif type == "C960":
+                Game.load960Game() #TODO implement
+            else:
+                print("Error, wrong game type attempted to be initialized, " + type + " isn't an option!")
+        else:
+            Game.loadGame("custom_game.txt") #TODO implement
+    
+    @staticmethod
+    def populateVirtualBoard(file):
+        x = 0
+        wasted_line = file.readline() #get rid of empty line
+        for x in range(8):
+            line = file.readline().strip("\n").split(",")
+            print(x)
+            print(line)
+            y = -1
+            for data in line:
+                y += 1
+                colour_letter = data[0]
+                piece_letter = data[1]
+                other = len(data) == 3
+                if colour_letter == "W":
+                    colour = "White"
+                else:
+                    colour = "Black"
+                if piece_letter == "N":
+                    knight = Knight(x,y, colour, other)
+                elif piece_letter == "B":
+                    bishop = Bishop(x,y,colour, other)
+                elif piece_letter == "P":
+                    pawn = Pawn(x,y, colour, other)
+                elif piece_letter == "Q":
+                    queen = Queen(x,y, colour, other)
+                elif piece_letter == "K":
+                    king = King(x,y, colour, other)
+                elif piece_letter == "R":
+                    if other:
+                        if data[2] == "m":
+                            rook = Rook(x,y, colour, False, True)
+                        elif data[2] == "p":
+                            rook = Rook(x,y, colour, True, False)
+                    else:
+                        rook = Rook(x,y, colour, False, False)
+                elif piece_letter == "0":
+                    setSquare(Pos(x,y), "00")
+
+
+    @staticmethod
+    def loadGame(file_name):
+        try:
+            file_dir = Path("saved_games/")
+            file_path = file_dir / file_name
+            file = open(file_path,"r+")
+            Game.populateVirtualBoard(file)
+        except FileNotFoundError:
+            print("Can't find file",str(file_name)+" is not in your directory!")
+
+def getSquare(pos): #read from board 2D array using a Pos object
+    if isinstance(pos, Pos):
+        return board[pos.x][pos.y]
+    return None
+
+def setSquare(pos, value): #write to board 2D array using a Pos object
+    if isinstance(pos, Pos):
+        board[pos.x][pos.y] = value
+
+def main():
+    game = Game("Classic", True)
+    
+
+main()
+
+
 
 #CODE TESTS
 #Yes this is scuffed but good enough to get the job done. 
@@ -217,4 +349,24 @@ print("False? " + str(test1))
 print("False? " + str(test2))
 print("Knight pos Valid (True) ? " + str(test3))
 print("knight pos: "+ str(knight.pos))
+print("knight pos: "+ str(knight.pos.toSqu().toPos()))
 print("Knight square: " + str(knight.pos.toSqu()))
+pos_arr = knight.get_possible_moves()
+moves = ""
+for pos in pos_arr:
+    moves += " ," + (str(pos.toSqu())) 
+print("Knight can go to " + moves)
+
+knight.move_pos(Pos(0,0))
+pos_arr = knight.get_possible_moves()
+moves = ""
+for pos in pos_arr:
+    moves += " ," + (str(pos.toSqu())) #TODO fix da stuff
+print("Knight can go to " + moves)
+
+#TODO implement
+moves = ""
+pos_arr = bishop.get_possible_moves()
+for pos in pos_arr:
+    moves += " ," + (str(pos.toSqu())) 
+print("Bishop can go to " + moves)
