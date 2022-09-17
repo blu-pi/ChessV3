@@ -94,11 +94,18 @@ class Squ:
 #interface (the oop kind)
 class Piece:
     total_pieces = 0
+    piece_dict = { #stores object references themselves
+        "White" : [],
+        "Black" : [],
+        "Captured by White" : [], #all pieces here are black
+        "Captured by Black" : []  #all pieces here are white
+    }
 
     def __init__(self, x, y, colour, letter):
         self.pos = Pos(x, y)
         self.colour = colour
         self.letter = letter
+        self.possible_moves = []
         other_info = Game.board[x][y]
         Game.board[x][y] = colour[0] + letter[0] + other_info #has_moved and is_promoted symbols are written before but need to come after piece and colour symbols
         Piece.total_pieces += 1
@@ -111,13 +118,24 @@ class Piece:
     def __str__(self):
         return self.colour + self.letter
 
-    def move_pos(self, new_pos):
+    #all checks applied normally
+    def moveTo(self, new_pos):
+        if new_pos in self.possible_moves:
+            Game.update_pgn(self, new_pos)
+            init_pos_entry = Game.readSquare(self.pos)
+            Game.writeSquare(self.pos, "00")
+            self.pos = new_pos
+            if self.letter == "P" or self.letter == "K" or self.letter == "R":
+                if not self.has_moved:
+                    self.has_moved = True
+                    init_pos_entry.rstrip(init_pos_entry[-1])
+            Game.writeSquare(self.pos, init_pos_entry)
+
+    #no checks made
+    def moveToAnarchy(self, new_pos):
         init_pos_entry = Game.readSquare(self.pos)
         Game.writeSquare(self.pos, "00")
         self.pos = new_pos
-        if self.letter == "P" or self.letter == "K" or self.letter == "R":
-            self.has_moved = True
-            init_pos_entry.rstrip(init_pos_entry[-1])
         Game.writeSquare(self.pos, init_pos_entry)
 
 
@@ -130,6 +148,7 @@ class Knight(Piece):
         self.is_promoted = is_promoted
         if is_promoted:
             Game.board[x][y] = "p"
+        Piece.piece_dict[colour].append(self)
         Piece.__init__(self, x, y, colour, Knight.letter)
 
     def __str__(self):
@@ -167,6 +186,7 @@ class Bishop(Piece):
         self.is_promoted = is_promoted
         if is_promoted:
             Game.board[x][y] = "p"
+        Piece.piece_dict[colour].append(self)
         Piece.__init__(self, x, y, colour, Bishop.letter)
 
     def __str__(self):
@@ -206,10 +226,36 @@ class Pawn(Piece):
         self.has_moved = has_moved #only relevant in rules for pawn, king and rooks.
         if has_moved:
             Game.board[x][y] = "m"
+        Piece.piece_dict[colour].append(self)
         Piece.__init__(self, x, y, colour, Pawn.letter)
 
     def __str__(self):
         return self.colour + " Pawn"
+
+    def get_possible_moves(self):
+        possible_new_pos = [] 
+        delta_x = 1 #only when capturing
+        delta_y = 1
+        if self.colour == "Black":
+            delta_y = -1
+            delta_x = -1
+        normal_move = self.pos + Pos(0, delta_y)
+        move_2_forward = self.pos + Pos(0, delta_y * 2) #only if the pawn hasn't yet moved
+        capture_right = self.pos + Pos(delta_x, delta_y)
+        capture_left = self.pos + Pos(delta_x * -1, delta_y)
+        if not normal_move.isFriendly(self) and not normal_move.isHostile(self): #then it's clear
+            possible_new_pos.append(normal_move)
+            #if pawn hasn't moved yet and destination square isn't occupied
+            if self.has_moved == False and not move_2_forward.isFriendly(self) and not move_2_forward.isHostile(self):
+                possible_new_pos.append(move_2_forward)
+        if capture_right.isHostile(self) or self.canEnPassant():
+            possible_new_pos.append(capture_right)
+        if capture_left.isHostile(self) or self.canEnPassant():
+            possible_new_pos.append(capture_left)
+        return possible_new_pos
+
+    def canEnpassant(self): #google en passant. Holy hell
+        pass #TODO write method from notes on pad
 
 
 class Queen(Piece):
@@ -221,6 +267,7 @@ class Queen(Piece):
         self.is_promoted = is_promoted
         if is_promoted:
             Game.board[x][y] = "p"
+        Piece.piece_dict[colour].append(self)
         Piece.__init__(self, x, y, colour, Queen.letter)
 
     def __str__(self):
@@ -237,6 +284,7 @@ class King(Piece):
         self.has_moved = has_moved
         if has_moved:
             Game.board[x][y] = "m"
+        Piece.piece_dict[colour].append(self)
         Piece.__init__(self, x, y, colour, King.letter)
 
     def __str__(self):
@@ -255,6 +303,7 @@ class Rook(Piece):
             Game.board[x][y] = "m"
         elif is_promoted:
             Game.board[x][y] = "p"
+        Piece.piece_dict[colour].append(self)
         Piece.__init__(self, x, y, colour, Rook.letter)
 
     def __str__(self):
@@ -262,6 +311,10 @@ class Rook(Piece):
 
 class Game:
 
+    turn = "White"
+    move = 0
+
+    #no matter what happens board dimensions will never change
     board = [
         ["","","","","","","",""],
         ["","","","","","","",""],
@@ -272,6 +325,8 @@ class Game:
         ["","","","","","","",""],
         ["","","","","","","",""]
         ]
+    
+    pgn = [] #"Portable Game Notation" as used by World Chess governing body Fide
 
     def __init__(self, type, isNew):
         self.type = type
@@ -282,9 +337,17 @@ class Game:
             elif type == "C960":
                 Game.load960Game() #TODO implement
             else:
-                print("Error, wrong game type attempted to be initialized, " + type + " isn't an option!")
+                print("Error, wrong game type attempted to be initialized, " + type + " isn't supported!")
         else:
             Game.loadGame("custom_game.txt") #TODO implement
+
+    def update_pgn(piece_obj, new_pos):
+        piece_rep = piece_obj.letter
+        capture = "x"
+        new_sq = str(new_pos.toSqu()).casefold()
+        if isinstance(piece_obj, Pawn):
+            pass #TODO finish this (if pawn cap but destination empty) then finish pgn generation
+
     
     @staticmethod
     def populateVirtualBoard(file):
@@ -383,18 +446,26 @@ for pos in pos_arr:
     moves += " ," + (str(pos.toSqu())) 
 print("Knight can go to " + moves)
 
-knight.move_pos(Pos(0,0))
+knight.moveToAnarchy(Pos(0,0))
 print("Knight square: " + str(knight.pos.toSqu()))
 pos_arr = knight.get_possible_moves()
 moves = ""
 for pos in pos_arr:
-    moves += " ," + (str(pos.toSqu())) #TODO fix da stuff
+    moves += " ," + (str(pos.toSqu())) 
 print("Knight can go to " + moves)
 
-#TODO implement
 moves = ""
 pos_arr = bishop.get_possible_moves()
 print("Bishop square: " + str(bishop.pos.toSqu()))
 for pos in pos_arr:
     moves += " ," + (str(pos.toSqu())) 
 print("Bishop can go to " + moves)
+
+moves = ""
+pos_arr = pawn.get_possible_moves()
+print("Pawn square: " + str(pawn.pos.toSqu()))
+for pos in pos_arr:
+    moves += " ," + (str(pos.toSqu())) 
+print("Pawn can go to " + moves)
+
+#TODO Test new features
