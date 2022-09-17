@@ -15,29 +15,18 @@ from pathlib import Path
 
 board_files = ["A","B","C","D","E","F","G","H"] #all files/collumnes on a chess board
 
-#COLOUR THEN PIECE LETTER. 00 represents empty square
+#COLOUR THEN PIECE LETTER. 00 represents empty square 
+#Only exists as documentation for what format the board is represented in and isn't used in the program
 test_board = [
-    ["WR","WP",00,00,00,00,"BP","BR"],
-    ["WN","WP",00,00,00,00,"BP","BN"],
-    ["WB","WP",00,00,00,00,"BP","BB"],
-    ["WQ","WP",00,00,00,00,"BP","BQ"],
-    ["WK","WP",00,00,00,00,"BP","BK"],
-    ["WB","WP",00,00,00,00,"BP","BB"],
-    ["WN","WP",00,00,00,00,"BP","BN"],
-    ["WR","WP",00,00,00,00,"BP","BR"]
+    ["WR","WP","00","00","00","00","BP","BR"],
+    ["WN","WP","00","00","00","00","BP","BN"],
+    ["WB","WP","00","00","00","00","BP","BB"],
+    ["WQ","WP","00","00","00","00","BP","BQ"],
+    ["WK","WP","00","00","00","00","BP","BK"],
+    ["WB","WP","00","00","00","00","BP","BB"],
+    ["WN","WP","00","00","00","00","BP","BN"],
+    ["WR","WP","00","00","00","00","BP","BR"]
     ]
-
-board = [
-    ["","","","","","","",""],
-    ["","","","","","","",""],
-    ["","","","","","","",""],
-    ["","","","","","","",""],
-    ["","","","","","","",""],
-    ["","","","","","","",""],
-    ["","","","","","","",""],
-    ["","","","","","","",""]
-    ]
-    
 
 #pos always refers a coordinate 
 class Pos: #cba to find import for co-ordinates
@@ -55,8 +44,11 @@ class Pos: #cba to find import for co-ordinates
         return Pos(self.x + other.x, self.y + other.y)  
     #__radd__ not needed as only 2 Pos can be added. Pos + int or int + Pos is not supported!
 
-    def isFree(self, piece):
-        return getSquare(self)[0] != piece.colour
+    def isFriendly(self, piece):
+        return Game.readSquare(self)[0] == piece.colour[0]
+    
+    def isHostile(self, piece):
+        return not self.isFriendly(piece) and Game.readSquare(self) != "00" #if it's not friendly and not neutral it's hostile!
 
     #checks if the position is on the board
     def isValid(self):
@@ -107,8 +99,8 @@ class Piece:
         self.pos = Pos(x, y)
         self.colour = colour
         self.letter = letter
-        current = board[x][y]
-        board[x][y] = colour[0] + letter[0] + current #has_moved and is_promoted symbols are written before but need to come after
+        other_info = Game.board[x][y]
+        Game.board[x][y] = colour[0] + letter[0] + other_info #has_moved and is_promoted symbols are written before but need to come after piece and colour symbols
         Piece.total_pieces += 1
 
     def __eq__(self, other):
@@ -120,13 +112,13 @@ class Piece:
         return self.colour + self.letter
 
     def move_pos(self, new_pos):
-        init_pos_entry = getSquare(self.pos)
-        setSquare(self.pos, "00")
+        init_pos_entry = Game.readSquare(self.pos)
+        Game.writeSquare(self.pos, "00")
         self.pos = new_pos
         if self.letter == "P" or self.letter == "K" or self.letter == "R":
             self.has_moved = True
             init_pos_entry.rstrip(init_pos_entry[-1])
-        setSquare(self.pos, init_pos_entry)
+        Game.writeSquare(self.pos, init_pos_entry)
 
 
 class Knight(Piece):
@@ -137,14 +129,14 @@ class Knight(Piece):
     def __init__(self, x, y, colour, is_promoted):
         self.is_promoted = is_promoted
         if is_promoted:
-            board[x][y] = "p"
+            Game.board[x][y] = "p"
         Piece.__init__(self, x, y, colour, Knight.letter)
 
     def __str__(self):
         return self.colour + " Knight"
     
     #return co-ordinates of all squares this peace is allowed to move to. 
-    #Start Tier 1 legality check (refer to "Legality Logic Explained")
+    #Start Tier 1,3,4 legality checks (refer to "Legality Logic Explained")
     def get_possible_moves(self):
         possible_new_pos = [] 
         delta_x = 2
@@ -155,7 +147,7 @@ class Knight(Piece):
                 delta_y = 2
             move_vector = Pos(delta_x, delta_y)
             new_pos = self.pos + move_vector
-            if new_pos.isValid() and new_pos.isFree(self): #TODO maybe not working properly
+            if new_pos.isValid() and not new_pos.isFriendly(self): 
                 possible_new_pos.append(new_pos)
             #modify deltas for next loop
             if i % 2 == 0:
@@ -163,10 +155,7 @@ class Knight(Piece):
             else:
                 delta_x *= -1           
         return possible_new_pos
-        #proceed to Tier 3 legality checks    
-    
-    def getLetter(self):
-        return self.letter
+        #proceed to Tier 5,6 legality checks later
 
 
 class Bishop(Piece):
@@ -177,11 +166,34 @@ class Bishop(Piece):
     def __init__(self, x, y, colour, is_promoted):
         self.is_promoted = is_promoted
         if is_promoted:
-            board[x][y] = "p"
+            Game.board[x][y] = "p"
         Piece.__init__(self, x, y, colour, Bishop.letter)
 
     def __str__(self):
         return self.colour + " Bishop"
+
+    def get_possible_moves(self):
+        possible_new_pos = [] 
+        delta_x = delta_y = 1
+        for i in range(4):
+            new_pos = self.pos 
+            move_vector = Pos(delta_x, delta_y)
+            for distance in range(8): #maximum diagonal distance a bishop can travel is 7 squares. 
+                new_pos += move_vector
+                if new_pos.isValid() and not new_pos.isFriendly(self):
+                    possible_new_pos.append(new_pos)
+                    if new_pos.isHostile(self): #can't travel through hostile pieces but can take their place (capture them)
+                        break
+                else:
+                    break
+
+            #modify deltas for next loop
+            if i % 2 == 0:
+                delta_y *= -1
+            else:
+                delta_x *= -1 
+        return possible_new_pos 
+
 
 
 class Pawn(Piece):
@@ -193,7 +205,7 @@ class Pawn(Piece):
         self.is_promoted = False #promoting to a pawn isn't allowed
         self.has_moved = has_moved #only relevant in rules for pawn, king and rooks.
         if has_moved:
-            board[x][y] = "m"
+            Game.board[x][y] = "m"
         Piece.__init__(self, x, y, colour, Pawn.letter)
 
     def __str__(self):
@@ -208,7 +220,7 @@ class Queen(Piece):
     def __init__(self, x, y, colour, is_promoted):
         self.is_promoted = is_promoted
         if is_promoted:
-            board[x][y] = "p"
+            Game.board[x][y] = "p"
         Piece.__init__(self, x, y, colour, Queen.letter)
 
     def __str__(self):
@@ -224,7 +236,7 @@ class King(Piece):
         self.is_promoted = False #promoting to a king isn't allowed
         self.has_moved = has_moved
         if has_moved:
-            board[x][y] = "m"
+            Game.board[x][y] = "m"
         Piece.__init__(self, x, y, colour, King.letter)
 
     def __str__(self):
@@ -240,15 +252,26 @@ class Rook(Piece):
         self.is_promoted = is_promoted
         self.has_moved = has_moved
         if has_moved:
-            board[x][y] = "m"
+            Game.board[x][y] = "m"
         elif is_promoted:
-            board[x][y] = "p"
+            Game.board[x][y] = "p"
         Piece.__init__(self, x, y, colour, Rook.letter)
 
     def __str__(self):
         return self.colour + " Rook"
 
 class Game:
+
+    board = [
+        ["","","","","","","",""],
+        ["","","","","","","",""],
+        ["","","","","","","",""],
+        ["","","","","","","",""],
+        ["","","","","","","",""],
+        ["","","","","","","",""],
+        ["","","","","","","",""],
+        ["","","","","","","",""]
+        ]
 
     def __init__(self, type, isNew):
         self.type = type
@@ -300,7 +323,7 @@ class Game:
                     else:
                         rook = Rook(x,y, colour, False, False)
                 elif piece_letter == "0":
-                    setSquare(Pos(x,y), "00")
+                    Game.writeSquare(Pos(x,y), "00")
 
 
     @staticmethod
@@ -313,14 +336,17 @@ class Game:
         except FileNotFoundError:
             print("Can't find file",str(file_name)+" is not in your directory!")
 
-def getSquare(pos): #read from board 2D array using a Pos object
-    if isinstance(pos, Pos):
-        return board[pos.x][pos.y]
-    return None
+    @staticmethod
+    def readSquare(pos): #read from board 2D array using a Pos object
+        if isinstance(pos, Pos):
+            return Game.board[pos.x][pos.y]
+        return None
 
-def setSquare(pos, value): #write to board 2D array using a Pos object
-    if isinstance(pos, Pos):
-        board[pos.x][pos.y] = value
+    @staticmethod
+    def writeSquare(pos, value): #write to board 2D array using a Pos object
+        if isinstance(pos, Pos):
+            Game.board[pos.x][pos.y] = value
+
 
 def main():
     game = Game("Classic", True)
@@ -358,6 +384,7 @@ for pos in pos_arr:
 print("Knight can go to " + moves)
 
 knight.move_pos(Pos(0,0))
+print("Knight square: " + str(knight.pos.toSqu()))
 pos_arr = knight.get_possible_moves()
 moves = ""
 for pos in pos_arr:
@@ -367,6 +394,7 @@ print("Knight can go to " + moves)
 #TODO implement
 moves = ""
 pos_arr = bishop.get_possible_moves()
+print("Bishop square: " + str(bishop.pos.toSqu()))
 for pos in pos_arr:
     moves += " ," + (str(pos.toSqu())) 
 print("Bishop can go to " + moves)
